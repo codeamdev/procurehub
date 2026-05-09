@@ -1,0 +1,11 @@
+Django==5.2.1
+django-cors-headers==4.9.0
+django-tenants==3.10.1
+djangorestframework==3.17.1
+djangorestframework-simplejwt==5.5.1
+drf-nested-routers==0.95.0
+anthropic==0.98.0
+pillow==11.2.1
+psycopg2-binary==2.9.12
+python-dotenv==1.0.1
+RestrictedPython==7.4
