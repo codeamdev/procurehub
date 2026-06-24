@@ -31,6 +31,7 @@ class WorkflowDefinition(models.Model):
     description = models.TextField(blank=True)
     version = models.PositiveIntegerField(default=1)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    code_prefix = models.CharField(max_length=20, blank=True, default='')
     show_in_menu = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -67,9 +68,6 @@ class Step(models.Model):
     order = models.PositiveIntegerField(default=0)
     is_initial = models.BooleanField(default=False)
     is_final = models.BooleanField(default=False)
-    allowed_roles_to_view = models.JSONField(default=list)
-    allowed_roles_to_edit = models.JSONField(default=list)
-    allowed_roles_to_act = models.JSONField(default=list)
 
     class Meta:
         ordering = ['order']
@@ -218,6 +216,7 @@ class Request(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.ACTIVE
     )
+    code = models.CharField(max_length=60, blank=True, unique=True)
     title = models.CharField(max_length=255, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -332,6 +331,25 @@ class BranchConditionRoute(models.Model):
         else:
             target = '[stay]'
         return f"{self.branch.label} / [{cond}] → {target}"
+
+
+class RequestCodeCounter(models.Model):
+    """
+    Atomic per-(family_id, year) counter for Request.code generation.
+    select_for_update() on this row (always exists) eliminates the race
+    that occurs when select_for_update on an empty Request queryset locks nothing.
+    """
+    family_id = models.UUIDField()
+    year = models.PositiveIntegerField()
+    last_seq = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['family_id', 'year'],
+                name='unique_code_counter_family_year',
+            )
+        ]
 
 
 class RequestHistory(models.Model):

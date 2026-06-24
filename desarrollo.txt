@@ -1,0 +1,879 @@
+prompt 1:
+
+Enhance the system with a dynamic workflow rendering engine.
+
+## Workflow JSON API
+
+Create an endpoint that returns workflows in this format:
+
+{
+id,
+name,
+steps: [
+{
+id,
+name,
+type,
+fields: [
+{
+name,
+label,
+type (text, number, boolean, select),
+required,
+options (optional)
+}
+],
+actions: [
+{
+label,
+type,
+next_step_id
+}
+]
+}
+]
+}
+
+---
+
+## Frontend Dynamic Rendering (CRITICAL)
+
+* Build a DynamicForm component
+
+* Render fields dynamically based on type
+
+* Support:
+
+  * text
+  * number
+  * boolean
+  * select
+
+* Store form state in a JSON object
+
+---
+
+## Actions सिस्टम
+
+* Render buttons dynamically from workflow
+* On click:
+
+  * Send action + form data to backend
+  * Move request to next step
+
+---
+
+## Backend Logic
+
+* Validate required fields
+* Update request.data (JSONField)
+* Transition to next step using WorkflowAction
+
+---
+
+## UX
+
+* Multi-step UI (wizard style)
+* Show current step clearly
+* Clean and minimal UI
+
+---
+
+## Important
+
+* Keep system extensible
+* Avoid hardcoding fields
+* Everything must be driven by workflow definition
+
+
+
+
+
+prompt 2:
+
+Enhance the existing multi-tenant Django + Next.js application by implementing a robust permission system based on roles and workflow steps.
+
+## Goal
+
+Implement fine-grained permissions that control:
+
+* Who can view a request
+* Who can edit data in a step
+* Who can execute actions in a step
+
+---
+
+## User Roles
+
+Use these roles:
+
+* admin
+* buyer
+* supplier
+
+Ensure role is stored in the User model.
+
+---
+
+## Backend تغييرات (Django)
+
+### Extend WorkflowStep
+
+Add permission fields:
+
+* allowed_roles_to_view (JSONField or ArrayField)
+* allowed_roles_to_edit (JSONField or ArrayField)
+* allowed_roles_to_act (JSONField or ArrayField)
+
+Example:
+
+{
+"allowed_roles_to_view": ["admin", "buyer"],
+"allowed_roles_to_edit": ["buyer"],
+"allowed_roles_to_act": ["buyer"]
+}
+
+---
+
+## Request Access Rules
+
+### Create utility functions:
+
+* can_view_request(user, request)
+* can_edit_step(user, request)
+* can_execute_action(user, request)
+
+These should:
+
+* Check user.role
+* Check current step permissions
+* Return True/False
+
+---
+
+## Protect API Endpoints
+
+Apply permission checks in:
+
+### 1. Get Request Detail
+
+* Only allow if can_view_request == True
+
+### 2. Update Request Data
+
+* Only allow if can_edit_step == True
+
+### 3. Execute Action Endpoint
+
+* Only allow if can_execute_action == True
+
+If not allowed:
+
+* Return HTTP 403 with clear message
+
+---
+
+## Supplier Restrictions
+
+* Suppliers can ONLY:
+
+  * View requests assigned to them
+  * Submit responses
+* Suppliers CANNOT:
+
+  * Approve/reject workflows
+  * Modify buyer data
+
+---
+
+## WorkflowAction Security
+
+Before executing an action:
+
+* Validate that user role is allowed
+* Validate that action belongs to current step
+
+---
+
+## Frontend (Next.js)
+
+### Hide UI based on permissions
+
+* If user cannot edit:
+
+  * Disable form inputs
+
+* If user cannot act:
+
+  * Hide action buttons
+
+* If user cannot view:
+
+  * Redirect or show "Access Denied"
+
+---
+
+## API Response Enhancement
+
+When returning request detail, include:
+
+{
+...
+"permissions": {
+"can_view": true,
+"can_edit": false,
+"can_act": true
+}
+}
+
+---
+
+## UX Improvements
+
+* Disable buttons instead of removing (optional)
+* Show tooltip: "You don't have permission"
+
+---
+
+## Important Rules
+
+* NEVER trust frontend alone
+* Always enforce permissions in backend
+* Keep logic reusable and centralized
+
+---
+
+## Clean Code
+
+* Use service layer or utils for permission logic
+* Avoid duplicating permission checks
+* Add comments explaining permission flow
+
+---
+
+## Output
+
+* Secure backend endpoints
+* Permission-aware frontend UI
+* Clean, scalable permission system ready for production
+
+
+
+
+
+prompt 3:
+
+Enhance the existing multi-tenant Django + Next.js application by implementing an AI-powered assistant deeply integrated with workflows, requests, and suppliers.
+
+## Goal
+
+Create an AI agent that can:
+
+* Understand user queries
+* Access tenant-specific data
+* Perform actions like creating requests
+* Provide recommendations based on historical data
+
+---
+
+## AI Stack
+
+* Use OpenAI API
+* Backend handles all AI communication
+* DO NOT expose API keys to frontend
+
+---
+
+## Backend (Django)
+
+Create app: ai_assistant
+
+---
+
+## Core Endpoint
+
+POST /api/ai/chat
+
+### Input:
+
+{
+"message": "string",
+"context": {
+"request_id": optional,
+"workflow_id": optional
+}
+}
+
+---
+
+## Context Injection (CRITICAL)
+
+Before calling OpenAI, gather:
+
+* Recent requests (last 10)
+* Suppliers
+* Supplier responses
+* Current request (if provided)
+
+Format into structured context:
+
+{
+"requests": [...],
+"suppliers": [...],
+"responses": [...]
+}
+
+---
+
+## Prompt Engineering
+
+Build a system prompt like:
+
+"You are an AI assistant helping a procurement system. You can:
+
+* Create purchase requests
+* Recommend suppliers
+* Analyze quotes
+* Answer questions about orders
+
+Always respond in structured JSON when performing actions."
+
+---
+
+## AI Response Format
+
+The AI should return:
+
+### 1. Chat response
+
+{
+"type": "message",
+"content": "text response"
+}
+
+### 2. Create request
+
+{
+"type": "create_request",
+"workflow_id": 1,
+"data": {
+"producto": "Laptop",
+"cantidad": 10
+}
+}
+
+### 3. Recommendation
+
+{
+"type": "recommend_suppliers",
+"suppliers": [1, 2, 3]
+}
+
+---
+
+## Action Handler
+
+After receiving AI response:
+
+* If type == message → return to frontend
+* If type == create_request:
+
+  * Create Request in DB
+* If type == recommend_suppliers:
+
+  * Fetch supplier data and return
+
+---
+
+## Multi-tenant Awareness
+
+* Ensure all queries use current tenant schema
+* NEVER mix data across tenants
+
+---
+
+## Frontend (Next.js)
+
+### AI Chat Component
+
+* Chat UI (input + messages)
+* Send message to /api/ai/chat
+* Render responses
+
+---
+
+## Smart UI Actions
+
+If AI returns:
+
+### create_request
+
+* Show preview of request
+* Allow user to confirm before saving
+
+### recommend_suppliers
+
+* Display supplier cards
+
+---
+
+## Use Cases
+
+1. "Create a request for 20 laptops"
+2. "Show me pending requests"
+3. "Recommend suppliers for this request"
+4. "Which supplier is cheapest?"
+
+---
+
+## Safety
+
+* Validate AI-generated data before saving
+* Do not blindly trust AI output
+
+---
+
+## Optional (Advanced)
+
+* Add conversation history (per user)
+* Store AI interactions
+* Add retry / fallback
+
+---
+
+## Clean Code
+
+* Separate AI service layer
+* Keep prompt construction modular
+* Log AI interactions for debugging
+
+---
+
+## Output
+
+* AI assistant integrated into system
+* Can read and act on real data
+* Extensible for future features
+
+
+
+
+
+prompt 4:
+
+You are a senior full-stack engineer.
+
+Extend the existing Django + React multi-tenant (schema-based) application with a robust authentication and authorization system.
+
+⚠️ Context:
+- Multi-tenant architecture using django-tenants (schema per tenant)
+- Each tenant = one company (buyer)
+- Providers (suppliers) also log in and interact with buyer tenants
+- Backend: Django + DRF
+- Frontend: React (Vite)
+- Python 3.12 virtual environment (no Docker)
+
+-----------------------------------
+🔐 BACKEND REQUIREMENTS (Django)
+-----------------------------------
+
+1. Authentication System:
+- Use JWT authentication (djangorestframework-simplejwt)
+- Implement:
+  - Login endpoint
+  - Refresh token endpoint
+  - Logout (blacklist tokens)
+
+2. Custom User Model:
+- Extend AbstractUser
+- Fields:
+  - email (unique, used as username)
+  - role (choices below)
+  - company_name (optional for providers)
+- Roles:
+  - ADMIN (buyer company admin)
+  - BUYER (creates requests)
+  - SUPPLIER (submits proposals)
+
+3. Multi-tenant Awareness:
+- Users belong to a tenant (schema)
+- Ensure queries are tenant-isolated
+- Suppliers can belong to multiple tenants (important):
+  - Create a relationship table:
+    SupplierCompanyAccess:
+      - supplier (User)
+      - tenant (schema / company)
+      - is_approved (bool)
+
+4. Permissions System:
+- Create custom DRF permissions:
+  - IsAdmin
+  - IsBuyer
+  - IsSupplier
+- Enforce:
+  - Only BUYER/ADMIN can create requests
+  - Only SUPPLIER can submit proposals
+  - Only ADMIN can approve suppliers
+
+5. Supplier Approval Flow:
+- Supplier signs up
+- Requests access to a tenant
+- Admin approves/rejects
+- Only approved suppliers can see and bid on requests
+
+6. API Endpoints:
+- POST /auth/register/
+- POST /auth/login/
+- GET /auth/me/
+- POST /suppliers/request-access/
+- POST /suppliers/{id}/approve/
+- POST /suppliers/{id}/reject/
+
+-----------------------------------
+🧠 FRONTEND REQUIREMENTS (React)
+-----------------------------------
+
+1. Auth Pages:
+- Login page
+- Register page (supplier + buyer options)
+
+2. Auth Context:
+- Store JWT tokens
+- Auto-refresh tokens
+- Persist session
+
+3. Role-based UI:
+- ADMIN:
+  - Manage suppliers
+- BUYER:
+  - Create requests
+- SUPPLIER:
+  - View available requests
+  - Submit proposals
+
+4. Route Protection:
+- Protected routes based on role
+- Redirect if unauthorized
+
+-----------------------------------
+🔐 SECURITY BEST PRACTICES
+-----------------------------------
+
+- Hash passwords properly (default Django)
+- Use HTTP-only cookies OR secure token storage
+- Validate all inputs
+- Prevent cross-tenant data leaks
+- Add basic rate limiting (optional but recommended)
+
+-----------------------------------
+📁 OUTPUT FORMAT
+-----------------------------------
+
+1. Django:
+   - Updated User model
+   - Models for SupplierCompanyAccess
+   - Serializers
+   - Views (DRF ViewSets or APIViews)
+   - Permissions classes
+   - URLs
+
+2. React:
+   - AuthContext
+   - Login/Register pages
+   - ProtectedRoute component
+   - Example role-based dashboard rendering
+
+3. Setup Instructions:
+   - Install dependencies
+   - Run migrations
+   - Create superuser
+
+Keep code clean, modular, and production-ready.
+
+
+
+
+prompt 5:
+You are a senior full-stack engineer and software architect.
+
+Your task is to build a production-ready MVP of a **B2B procurement platform (buyer ↔ suppliers marketplace)** with a **multi-tenant architecture (schema-based)**.
+
+⚠️ VERY IMPORTANT:
+
+* Backend: Django + Django REST Framework
+* Multi-tenancy: django-tenants (schema per tenant)
+* Frontend: React (Vite)
+* Database: PostgreSQL
+* Python version: 3.12 (must work inside a virtualenv, NO Docker)
+* Code must be clean, modular, and scalable
+
+---
+
+# 🧠 CORE BUSINESS LOGIC
+
+This is a marketplace where:
+
+* A **company (tenant)** creates procurement requests
+* **Suppliers** can:
+
+  * Request access to a company
+  * Once approved → view requests
+  * Submit proposals (bids)
+
+Each tenant is isolated by schema.
+
+---
+
+# 🏗️ MULTI-TENANT ARCHITECTURE
+
+Use django-tenants:
+
+* Public schema:
+
+  * Shared users (especially suppliers)
+* Tenant schema:
+
+  * Requests
+  * Proposals
+  * Supplier access per company
+
+Support subdomains:
+
+* tenant1.localhost
+* tenant2.localhost
+
+---
+
+# 🔐 AUTHENTICATION & ROLES
+
+Use JWT (djangorestframework-simplejwt)
+
+Custom User model:
+
+Fields:
+
+* email (unique, login field)
+* password
+* role (ADMIN, BUYER, SUPPLIER)
+* company_name (optional)
+
+Roles:
+
+* ADMIN → manages tenant
+* BUYER → creates requests
+* SUPPLIER → submits proposals
+
+---
+
+# 🔗 SUPPLIER ACCESS MODEL
+
+Suppliers can access multiple tenants.
+
+Model:
+SupplierCompanyAccess:
+
+* supplier (FK User)
+* tenant
+* is_approved (bool)
+* created_at
+
+Flow:
+
+1. Supplier registers
+2. Requests access to tenant
+3. Admin approves/rejects
+4. Only approved suppliers can interact
+
+---
+
+# 📦 CORE MODELS
+
+Request:
+
+* id
+* title
+* description
+* budget
+* category
+* deadline
+* status (OPEN, CLOSED, AWARDED)
+* created_by
+* created_at
+
+Proposal:
+
+* id
+* request (FK)
+* supplier (FK User)
+* price
+* delivery_time
+* message
+* status (PENDING, ACCEPTED, REJECTED)
+* created_at
+
+---
+
+# ⚙️ BACKEND (DJANGO + DRF)
+
+You must generate:
+
+## Apps:
+
+* accounts
+* tenants
+* procurement
+
+## Features:
+
+### Auth:
+
+* POST /auth/register/
+* POST /auth/login/
+* GET /auth/me/
+* JWT refresh
+
+### Supplier Flow:
+
+* POST /suppliers/request-access/
+* POST /suppliers/{id}/approve/
+* POST /suppliers/{id}/reject/
+
+### Requests:
+
+* POST /requests/
+* GET /requests/
+* GET /requests/{id}/
+
+### Proposals:
+
+* POST /requests/{id}/proposals/
+* GET /requests/{id}/proposals/
+
+---
+
+# 🔒 PERMISSIONS
+
+* ADMIN:
+
+  * approve suppliers
+  * full control
+* BUYER:
+
+  * create requests
+* SUPPLIER:
+
+  * view requests (only approved tenants)
+  * submit proposals
+
+Create DRF custom permission classes.
+
+---
+
+# 🌐 FRONTEND (REACT + VITE)
+
+## Pages:
+
+* Login
+* Register
+* Dashboard (role-based)
+
+### ADMIN Dashboard:
+
+* Approve suppliers
+
+### BUYER Dashboard:
+
+* Create request
+* View proposals
+
+### SUPPLIER Dashboard:
+
+* View available requests
+* Submit proposal
+
+---
+
+# 🧠 FRONTEND ARCHITECTURE
+
+* Use Context API for auth
+* Store JWT
+* Auto refresh tokens
+* Protected routes by role
+
+Components:
+
+* AuthContext
+* ProtectedRoute
+* Layout
+* Forms (requests, proposals)
+
+---
+
+# 🔔 EXTRA (IMPORTANT)
+
+Implement:
+
+1. Request lifecycle:
+
+   * OPEN → CLOSED → AWARDED
+
+2. Basic validations:
+
+   * Budget > 0
+   * Deadline required
+
+3. Clean API structure:
+
+   * serializers
+   * services (optional but recommended)
+
+---
+
+# 🧪 SETUP INSTRUCTIONS
+
+Include:
+
+1. Create virtualenv (Python 3.12)
+2. Install dependencies
+3. Configure PostgreSQL
+4. Run migrations
+5. Create tenant
+6. Run backend + frontend
+
+---
+
+# 📁 PROJECT STRUCTURE
+
+Clearly define folders:
+
+backend/
+apps/
+config/
+frontend/
+src/
+
+---
+
+# 🎯 OUTPUT FORMAT
+
+You must output:
+
+1. Full backend code (models, views, serializers, permissions)
+2. Frontend structure and key components
+3. Step-by-step setup instructions
+4. Example data (seed or fixtures)
+
+---
+
+# 🚀 GOAL
+
+The result should be:
+
+* Fully functional MVP
+* Multi-tenant working via subdomains
+* Suppliers interacting with buyers
+* Ready to extend to production
+
+Do NOT skip important parts.
+Do NOT oversimplify architecture.
+Write real, usable code.
