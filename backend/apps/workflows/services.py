@@ -3,7 +3,8 @@ Workflow services — Phase 1: CRUD + basic request lifecycle.
 Phase 2 will add: RuleEvaluator, StateMachine, FormService, BranchExecutor.
 """
 import logging
-from django.db import transaction
+import datetime
+from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 
 from apps.common.exceptions import NotFoundError, ConflictError
@@ -11,6 +12,7 @@ from .models import (
     WorkflowDefinition, Step, Field, FieldRule,
     Branch, Request, RequestData, RequestHistory,
     WorkflowCondition, BranchConditionRoute,
+    RequestCodeCounter,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,9 +79,6 @@ def clone_workflow(workflow: WorkflowDefinition, user) -> WorkflowDefinition:
             order=old_step.order,
             is_initial=old_step.is_initial,
             is_final=old_step.is_final,
-            allowed_roles_to_view=old_step.allowed_roles_to_view,
-            allowed_roles_to_edit=old_step.allowed_roles_to_edit,
-            allowed_roles_to_act=old_step.allowed_roles_to_act,
         )
         step_map[str(old_step.id)] = new_step
 
@@ -158,11 +157,44 @@ def clone_workflow(workflow: WorkflowDefinition, user) -> WorkflowDefinition:
     return new_wf
 
 
+# ── Request code generation ───────────────────────────────────────────────────
+
+def _generate_request_code(workflow_definition: 'WorkflowDefinition') -> str:
+    """
+    Generate a unique code: PREFIX-YEAR-NNNN (or YEAR-NNNN if no prefix).
+    Uses a counter table so select_for_update always locks an existing row,
+    eliminating the race condition that occurred when the result set was empty.
+    Must be called inside a transaction (guaranteed by create_request).
+    """
+    year = datetime.date.today().year
+    prefix = (workflow_definition.code_prefix or '').strip().upper()
+
+    # Ensure the counter row exists, then lock it for the duration of the transaction.
+    RequestCodeCounter.objects.get_or_create(
+        family_id=workflow_definition.family_id,
+        year=year,
+        defaults={'last_seq': 0},
+    )
+    counter = (
+        RequestCodeCounter.objects
+        .select_for_update()
+        .get(family_id=workflow_definition.family_id, year=year)
+    )
+    counter.last_seq += 1
+    counter.save(update_fields=['last_seq'])
+
+    seq = f"{counter.last_seq:04d}"
+    return f"{prefix}-{year}-{seq}" if prefix else f"{year}-{seq}"
+
+
 # ── Request lifecycle ─────────────────────────────────────────────────────────
 
-@transaction.atomic
 def create_request(user, workflow_definition: WorkflowDefinition, title: str = '') -> Request:
-    """Create a new Request starting at the initial step."""
+    """
+    Create a new Request starting at the initial step.
+    Retries up to 3 times on IntegrityError (last-resort safety net for the unique
+    code constraint; should never trigger with the counter-table approach).
+    """
     if workflow_definition.status != WorkflowDefinition.Status.ACTIVE:
         raise ConflictError('Cannot create a request from a non-active workflow.')
 
@@ -170,12 +202,23 @@ def create_request(user, workflow_definition: WorkflowDefinition, title: str = '
     if not initial_step:
         raise ConflictError('Workflow has no initial step configured.')
 
-    request = Request.objects.create(
-        workflow_definition=workflow_definition,
-        current_step=initial_step,
-        created_by=user,
-        title=title or f'{workflow_definition.name} — {user.email}',
-    )
+    request = None
+    for attempt in range(3):
+        try:
+            with transaction.atomic():
+                code = _generate_request_code(workflow_definition)
+                request = Request.objects.create(
+                    workflow_definition=workflow_definition,
+                    current_step=initial_step,
+                    created_by=user,
+                    code=code,
+                    title=title or f'{workflow_definition.name} — {user.email}',
+                )
+            break
+        except IntegrityError:
+            if attempt == 2:
+                raise ConflictError('No se pudo generar un código único para la solicitud.')
+
     RequestHistory.objects.create(
         request=request,
         from_step=None,
@@ -329,9 +372,6 @@ def export_workflow(workflow: WorkflowDefinition) -> dict:
             'orden': step.order,
             'es_inicial': step.is_initial,
             'es_final': step.is_final,
-            'roles_ver': step.allowed_roles_to_view,
-            'roles_editar': step.allowed_roles_to_edit,
-            'roles_actuar': step.allowed_roles_to_act,
             'ramas': ramas,
             'reglas_campo': reglas,
         })
@@ -403,9 +443,6 @@ def import_workflow(data: dict, user) -> WorkflowDefinition:
             order=p.get('orden', 0),
             is_initial=p.get('es_inicial', False),
             is_final=p.get('es_final', False),
-            allowed_roles_to_view=p.get('roles_ver', []),
-            allowed_roles_to_edit=p.get('roles_editar', []),
-            allowed_roles_to_act=p.get('roles_actuar', []),
         )
         paso_nombre_to_step[nombre_paso] = step
 
