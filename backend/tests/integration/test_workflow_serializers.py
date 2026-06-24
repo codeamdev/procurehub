@@ -30,7 +30,14 @@ def _create_step(admin_client, workflow_pk, name, order=0, is_initial=False, is_
         content_type='application/json',
     )
     assert res.status_code == 201, res.json()
-    return res.json()['id']
+    # StepWriteSerializer omits id from POST response — retrieve via list.
+    list_res = admin_client.get(f'/api/workflows/definitions/{workflow_pk}/steps/')
+    assert list_res.status_code == 200, list_res.json()
+    results = list_res.json().get('results', list_res.json())
+    for step in results:
+        if step['name'] == name:
+            return step['id']
+    raise AssertionError(f"Created step '{name}' not found in step list")
 
 
 def _create_branch(admin_client, workflow_pk, step_pk, label='Go', order=0):
@@ -40,7 +47,16 @@ def _create_branch(admin_client, workflow_pk, step_pk, label='Go', order=0):
         content_type='application/json',
     )
     assert res.status_code == 201, res.json()
-    return res.json()['id']
+    # BranchWriteSerializer omits id from POST response — retrieve via list.
+    list_res = admin_client.get(
+        f'/api/workflows/definitions/{workflow_pk}/steps/{step_pk}/branches/'
+    )
+    assert list_res.status_code == 200, list_res.json()
+    results = list_res.json().get('results', list_res.json())
+    for branch in results:
+        if branch['label'] == label:
+            return branch['id']
+    raise AssertionError(f"Created branch '{label}' not found in branch list")
 
 
 def _create_condition(admin_client, workflow_pk, name='cond_a'):
@@ -55,7 +71,14 @@ def _create_condition(admin_client, workflow_pk, name='cond_a'):
         content_type='application/json',
     )
     assert res.status_code == 201, res.json()
-    return res.json()['id']
+    # WorkflowConditionWriteSerializer omits id — retrieve via list.
+    list_res = admin_client.get(f'/api/workflows/definitions/{workflow_pk}/conditions/')
+    assert list_res.status_code == 200, list_res.json()
+    results = list_res.json().get('results', list_res.json())
+    for cond in results:
+        if cond['name'] == name:
+            return cond['id']
+    raise AssertionError(f"Created condition '{name}' not found in condition list")
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -113,7 +136,8 @@ class TestBranchWriteSerializerCrossWorkflow:
             f"Response: {res.json()}"
         )
         data = res.json()
-        assert 'target_step_id' in data, (
+        errors = data.get('errors', data)
+        assert 'target_step_id' in errors, (
             f"Expected 'target_step_id' key in error response, got: {data}"
         )
 
@@ -210,7 +234,8 @@ class TestBranchConditionRouteWriteSerializerCrossWorkflow:
             f"(got {res.status_code}). Response: {res.json()}"
         )
         data = res.json()
-        assert 'target_step_id' in data, (
+        errors = data.get('errors', data)
+        assert 'target_step_id' in errors, (
             f"Expected 'target_step_id' key in error response, got: {data}"
         )
 
@@ -239,7 +264,8 @@ class TestBranchConditionRouteWriteSerializerCrossWorkflow:
             f"(got {res.status_code}). Response: {res.json()}"
         )
         data = res.json()
-        assert 'condition_id' in data, (
+        errors = data.get('errors', data)
+        assert 'condition_id' in errors, (
             f"Expected 'condition_id' key in error response, got: {data}"
         )
 
