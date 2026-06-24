@@ -280,11 +280,14 @@ def reorder_steps(workflow: WorkflowDefinition, ordered_ids: list) -> None:
     if not workflow.is_editable:
         raise ConflictError('Cannot modify steps of a non-draft workflow.')
     steps = {str(s.id): s for s in workflow.steps.all()}
+    to_update = []
     for position, step_id in enumerate(ordered_ids):
         step = steps.get(step_id)
         if step:
             step.order = position
-            step.save(update_fields=['order'])
+            to_update.append(step)
+    if to_update:
+        Step.objects.bulk_update(to_update, ['order'])
 
 
 def reorder_fields(workflow: WorkflowDefinition, ordered_ids: list) -> None:
@@ -292,11 +295,14 @@ def reorder_fields(workflow: WorkflowDefinition, ordered_ids: list) -> None:
     if not workflow.is_editable:
         raise ConflictError('Cannot modify fields of a non-draft workflow.')
     fields = {str(f.id): f for f in workflow.fields.all()}
+    to_update = []
     for position, field_id in enumerate(ordered_ids):
         field = fields.get(field_id)
         if field:
             field.order = position
-            field.save(update_fields=['order'])
+            to_update.append(field)
+    if to_update:
+        Field.objects.bulk_update(to_update, ['order'])
 
 
 # ── Import / Export ───────────────────────────────────────────────────────────
