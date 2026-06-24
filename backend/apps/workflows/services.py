@@ -65,6 +65,7 @@ def clone_workflow(workflow: WorkflowDefinition, user) -> WorkflowDefinition:
         family_id=workflow.family_id,
         name=workflow.name,
         description=workflow.description,
+        code_prefix=workflow.code_prefix,
         version=next_version,
         status=WorkflowDefinition.Status.DRAFT,
         created_by=user,
