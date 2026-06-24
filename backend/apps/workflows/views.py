@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 
 from apps.accounts.permissions import IsAdminOrBuyer
 from apps.common.exceptions import ConflictError
@@ -26,7 +26,10 @@ from .serializers import (
     WorkflowConditionSerializer, WorkflowConditionWriteSerializer,
     BranchConditionRouteSerializer, BranchConditionRouteWriteSerializer,
 )
-from .permissions import can_view_request, can_edit_step, can_execute_action, get_permissions_for_user
+from .permissions import (
+    can_view_request, can_edit_step, can_execute_action,
+    get_permissions_for_user, get_accessible_step_ids,
+)
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -89,8 +92,13 @@ class WorkflowDefinitionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='toggle-menu')
     def toggle_menu(self, request, pk=None):
-        """Toggle whether this workflow appears as a menu item."""
+        """Toggle whether this workflow appears as a menu item. Only ACTIVE workflows."""
         wf = self.get_object()
+        if wf.status != WorkflowDefinition.Status.ACTIVE:
+            raise ConflictError(
+                'Solo los workflows activos pueden aparecer en el menú. '
+                f'Este workflow está en estado "{wf.status}".'
+            )
         wf.show_in_menu = not wf.show_in_menu
         wf.save(update_fields=['show_in_menu', 'updated_at'])
         return Response(WorkflowDefinitionSerializer(wf).data)
@@ -440,8 +448,11 @@ class RequestViewSet(viewsets.ModelViewSet):
             'created_by',
         )
 
-        if user.role == 'supplier':
-            qs = qs.filter(created_by=user)
+        if not user.is_superuser:
+            accessible_step_ids = get_accessible_step_ids(user)
+            qs = qs.filter(
+                Q(created_by=user) | Q(current_step_id__in=accessible_step_ids)
+            )
 
         workflow_id = self.request.query_params.get('workflow_id')
         if workflow_id:
