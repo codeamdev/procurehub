@@ -27,9 +27,14 @@ def publish_workflow(workflow: WorkflowDefinition) -> WorkflowDefinition:
 
     steps = list(workflow.steps.all())
     if not steps:
-        raise ValidationError('Workflow must have at least one step before publishing.')
-    if not any(s.is_initial for s in steps):
-        raise ValidationError('Workflow must have exactly one initial step.')
+        raise ValidationError('El workflow debe tener al menos un paso antes de publicar.')
+    initial_steps = [s for s in steps if s.is_initial]
+    if len(initial_steps) == 0:
+        raise ValidationError('El workflow debe tener exactamente un paso inicial (ninguno encontrado).')
+    if len(initial_steps) > 1:
+        raise ValidationError(
+            f'El workflow tiene {len(initial_steps)} pasos iniciales; debe tener exactamente uno.'
+        )
 
     workflow.status = WorkflowDefinition.Status.ACTIVE
     workflow.save(update_fields=['status', 'updated_at'])
