@@ -1,3 +1,5 @@
+import uuid
+
 from rest_framework import serializers
 from .models import (
     WorkflowDefinition, Step, Field, FieldRule,
@@ -82,19 +84,32 @@ class BranchConditionRouteWriteSerializer(serializers.ModelSerializer):
         condition_id = data.pop('condition_id', None)
         target_step_id = data.pop('target_step_id', None)
 
+        workflow_pk = self.context.get('view').kwargs.get('workflow_pk')
+        workflow_uuid = uuid.UUID(str(workflow_pk))
+
         if condition_id:
             try:
-                data['condition'] = WorkflowCondition.objects.get(pk=condition_id)
+                condition = WorkflowCondition.objects.get(pk=condition_id)
             except WorkflowCondition.DoesNotExist:
                 raise serializers.ValidationError({'condition_id': 'Condición no encontrada.'})
+            if condition.workflow_id != workflow_uuid:
+                raise serializers.ValidationError(
+                    {'condition_id': 'La condición no pertenece a este workflow.'}
+                )
+            data['condition'] = condition
         else:
             data['condition'] = None
 
         if target_step_id:
             try:
-                data['target_step'] = Step.objects.get(pk=target_step_id)
+                target_step = Step.objects.get(pk=target_step_id)
             except Step.DoesNotExist:
                 raise serializers.ValidationError({'target_step_id': 'Paso no encontrado.'})
+            if target_step.workflow_id != workflow_uuid:
+                raise serializers.ValidationError(
+                    {'target_step_id': 'El paso no pertenece a este workflow.'}
+                )
+            data['target_step'] = target_step
         else:
             data['target_step'] = None
 
@@ -176,14 +191,18 @@ class StepMinimalSerializer(serializers.ModelSerializer):
 class StepSerializer(serializers.ModelSerializer):
     branches = BranchSerializer(many=True, read_only=True)
     field_rules = FieldRuleSerializer(many=True, read_only=True)
+    group_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Step
         fields = (
             'id', 'name', 'order', 'is_initial', 'is_final',
-            'allowed_roles_to_view', 'allowed_roles_to_edit', 'allowed_roles_to_act',
+            'group_name',
             'branches', 'field_rules',
         )
+
+    def get_group_name(self, obj):
+        return f"step:{obj.id}"
 
 
 # ── Field ─────────────────────────────────────────────────────────────────────
@@ -204,7 +223,7 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
         model = WorkflowDefinition
         fields = (
             'id', 'family_id', 'name', 'description',
-            'version', 'status', 'show_in_menu', 'created_by_email', 'created_at',
+            'version', 'status', 'show_in_menu', 'code_prefix', 'created_by_email', 'created_at',
         )
         read_only_fields = ('id', 'family_id', 'version', 'created_at')
 
@@ -220,7 +239,7 @@ class WorkflowDefinitionDetailSerializer(serializers.ModelSerializer):
         model = WorkflowDefinition
         fields = (
             'id', 'family_id', 'name', 'description',
-            'version', 'status', 'show_in_menu', 'is_editable',
+            'version', 'status', 'show_in_menu', 'code_prefix', 'is_editable',
             'created_by_email', 'created_at', 'updated_at',
             'steps', 'fields', 'conditions',
         )
@@ -232,10 +251,7 @@ class WorkflowDefinitionDetailSerializer(serializers.ModelSerializer):
 class StepWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Step
-        fields = (
-            'name', 'order', 'is_initial', 'is_final',
-            'allowed_roles_to_view', 'allowed_roles_to_edit', 'allowed_roles_to_act',
-        )
+        fields = ('name', 'order', 'is_initial', 'is_final')
 
 
 class FieldWriteSerializer(serializers.ModelSerializer):
@@ -325,9 +341,15 @@ class BranchWriteSerializer(serializers.ModelSerializer):
         target_id = data.pop('target_step_id', None)
         if target_id:
             try:
-                data['target_step'] = Step.objects.get(pk=target_id)
+                target_step = Step.objects.get(pk=target_id)
             except Step.DoesNotExist:
                 raise serializers.ValidationError({'target_step_id': 'Step not found.'})
+            workflow_pk = self.context.get('view').kwargs.get('workflow_pk')
+            if target_step.workflow_id != uuid.UUID(str(workflow_pk)):
+                raise serializers.ValidationError(
+                    {'target_step_id': 'El paso no pertenece a este workflow.'}
+                )
+            data['target_step'] = target_step
         else:
             data['target_step'] = None
             # terminal_status not required when condition_routes handle routing
@@ -364,13 +386,13 @@ class RequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = Request
         fields = (
-            'id', 'title', 'status',
+            'id', 'code', 'title', 'status',
             'workflow_definition_id', 'workflow_name', 'workflow_version',
             'current_step_name', 'created_by_email',
             'created_at', 'updated_at',
         )
         read_only_fields = (
-            'id', 'status', 'workflow_name', 'workflow_version',
+            'id', 'code', 'status', 'workflow_name', 'workflow_version',
             'current_step_name', 'created_by_email', 'created_at', 'updated_at',
         )
 
@@ -395,7 +417,7 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Request
         fields = (
-            'id', 'title', 'status',
+            'id', 'code', 'title', 'status',
             'workflow_definition', 'workflow_steps', 'current_step',
             'field_data', 'created_by_email',
             'created_at', 'updated_at',
