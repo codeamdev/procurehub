@@ -595,7 +595,11 @@ class RequestViewSet(viewsets.ModelViewSet):
 
         current_data = services.get_request_data_as_dict(instance)
         branches = get_state_machine().get_available_branches(instance, current_data)
-        return Response(BranchSerializer(branches, many=True).data)
+        can_act = can_execute_action(request.user, instance)
+        return Response({
+            'can_execute': can_act,
+            'branches': BranchSerializer(branches, many=True).data,
+        })
 
     @action(detail=True, methods=['post'])
     def transition(self, request, pk=None):
