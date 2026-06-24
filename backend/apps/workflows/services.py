@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.common.exceptions import NotFoundError, ConflictError
 from .models import (
-    WorkflowDefinition, Step, Field, FieldRule,
+    WorkflowDefinition, Step, Field, FieldRule, FieldType,
     Branch, Request, RequestData, RequestHistory,
     WorkflowCondition, BranchConditionRoute,
     RequestCodeCounter,
@@ -412,6 +412,24 @@ def import_workflow(data: dict, user) -> WorkflowDefinition:
     nombre = data.get('nombre', '').strip()
     if not nombre:
         raise ValueError('El campo "nombre" es obligatorio.')
+
+    pasos = data.get('pasos', [])
+    initial_count = sum(1 for p in pasos if p.get('es_inicial'))
+    if initial_count == 0:
+        raise ValueError('El JSON debe tener exactamente un paso con es_inicial=true (ninguno encontrado).')
+    if initial_count > 1:
+        raise ValueError(
+            f'El JSON tiene {initial_count} pasos con es_inicial=true; debe tener exactamente uno.'
+        )
+
+    valid_field_types = {ft.value for ft in FieldType}
+    for campo in data.get('campos', []):
+        tipo = campo.get('tipo', 'text')
+        if tipo not in valid_field_types:
+            raise ValueError(
+                f'Tipo de campo inválido: "{tipo}". '
+                f'Valores válidos: {sorted(valid_field_types)}.'
+            )
 
     new_wf = WorkflowDefinition.objects.create(
         name=nombre,
