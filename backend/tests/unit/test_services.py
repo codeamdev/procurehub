@@ -230,22 +230,44 @@ class TestSubmitProposal:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestBuildContext:
-    def test_returns_requests_and_suppliers(self, open_request, supplier):
+    """
+    build_context fue migrado a Anthropic + workflows.Request.
+    Claves ahora en español: solicitudes_recientes, proveedores, solicitud_actual.
+    request_id recibe UUID de workflows.Request (no ProcurementRequest.pk).
+    """
+
+    def test_returns_solicitudes_y_proveedores(self, open_request, supplier):
         from apps.ai_assistant.services import build_context
         ctx = build_context('test')
-        assert 'requests' in ctx
-        assert 'suppliers' in ctx
+        assert 'solicitudes_recientes' in ctx
+        assert 'proveedores' in ctx
+        assert 'workflows_activos' in ctx
 
-    def test_includes_current_request_when_id_provided(self, open_request):
+    def test_includes_solicitud_actual_when_request_id_provided(self, make_user):
+        from apps.workflows.models import WorkflowDefinition, Step
+        from apps.workflows.models import Request as WorkflowRequest
         from apps.ai_assistant.services import build_context
-        ctx = build_context('test', request_id=open_request.pk)
-        assert 'current_request' in ctx
-        assert ctx['current_request']['id'] == open_request.pk
 
-    def test_raises_if_request_not_found(self):
+        admin = make_user('ctx-admin@test.com', role='admin')
+        wf = WorkflowDefinition.objects.create(
+            name='CTX WF', status='active', created_by=admin,
+        )
+        step = Step.objects.create(workflow=wf, name='Inicio', order=0, is_initial=True)
+        req = WorkflowRequest.objects.create(
+            workflow_definition=wf, current_step=step,
+            created_by=admin, code='CTX-0001', title='Solicitud de contexto',
+        )
+
+        ctx = build_context('test', request_id=str(req.id))
+        assert 'solicitud_actual' in ctx
+        assert ctx['solicitud_actual']['titulo'] == 'Solicitud de contexto'
+
+    def test_no_error_if_request_not_found(self):
+        """La nueva implementación swallow silencioso — no lanza NotFoundError."""
+        import uuid
         from apps.ai_assistant.services import build_context
-        with pytest.raises(NotFoundError):
-            build_context('test', request_id=99999)
+        ctx = build_context('test', request_id=str(uuid.uuid4()))
+        assert 'solicitud_actual' not in ctx
 
 
 class TestHandleAIResponse:
@@ -279,19 +301,27 @@ class TestHandleAIResponse:
         assert 'suppliers' in result
 
 
-class TestCallOpenAI:
-    @patch('apps.ai_assistant.services.openai')
-    def test_returns_parsed_json_on_success(self, mock_openai):
-        from apps.ai_assistant.services import call_openai
-        mock_choice = MagicMock()
-        mock_choice.message.content = '{"type": "message", "content": "Hi"}'
-        mock_openai.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
-        result = call_openai([{'role': 'user', 'content': 'Hello'}])
+class TestCallClaude:
+    """call_openai fue renombrado/reemplazado por call_claude (Anthropic SDK)."""
+
+    def test_returns_parsed_json_on_success(self):
+        from apps.ai_assistant.services import call_claude
+        mock_block = MagicMock()
+        mock_block.text = '{"type": "message", "content": "Hi"}'
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+
+        with patch('anthropic.Anthropic') as mock_cls:
+            mock_cls.return_value.messages.create.return_value = mock_response
+            result = call_claude([{'role': 'user', 'content': 'Hello'}])
+
         assert result == {'type': 'message', 'content': 'Hi'}
 
-    @patch('apps.ai_assistant.services.openai')
-    def test_returns_fallback_on_api_error(self, mock_openai):
-        from apps.ai_assistant.services import call_openai
-        mock_openai.chat.completions.create.side_effect = Exception('API down')
-        result = call_openai([{'role': 'user', 'content': 'Hello'}])
-        assert result.get('type') == 'message'   # graceful fallback
+    def test_returns_fallback_on_api_error(self):
+        from apps.ai_assistant.services import call_claude
+
+        with patch('anthropic.Anthropic') as mock_cls:
+            mock_cls.return_value.messages.create.side_effect = Exception('API down')
+            result = call_claude([{'role': 'user', 'content': 'Hello'}])
+
+        assert result.get('type') == 'message'
