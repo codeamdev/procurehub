@@ -131,6 +131,57 @@ def supplier_chat(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_chat(request):
+    """
+    Agente conversacional de gestión de proveedores con tool-calling.
+
+    POST /api/ai/agent/
+    Turno 1 — mensaje normal:
+        {"message": "lista los proveedores pendientes", "conversation_id": null}
+    Turno 2 — confirmar escritura propuesta:
+        {"confirm_action": {"tool": "aprobar_proveedor", "args": {"supplier_id": 5}},
+         "conversation_id": 3}
+
+    Respuestas posibles:
+        {"type": "message", "content": "..."}
+        {"type": "pending_action", "tool": "...", "args": {...}, "preview": "..."}
+        {"type": "action_confirmed", "success": true, ...}
+    """
+    from .agent import SupplierAgent
+
+    agent = SupplierAgent(request.user)
+    conversation_id = request.data.get('conversation_id')
+
+    if 'confirm_action' in request.data:
+        action = request.data['confirm_action']
+        tool = action.get('tool', '').strip()
+        args = action.get('args', {})
+        if not tool:
+            return Response(
+                {'error': 'confirm_action.tool es requerido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(conversation_id, int):
+            return Response(
+                {'error': 'conversation_id (int) es requerido para confirmaciones.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        result = agent.confirm_action(tool, args, conversation_id)
+        return Response(result)
+
+    message = request.data.get('message', '').strip()
+    if not message:
+        return Response(
+            {'error': 'message es requerido.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    result = agent.run(message, conversation_id)
+    return Response(result)
+
+
+@api_view(['POST'])
 @permission_classes([IsApprovedSupplier])
 def supplier_suggestions(request):
     """
