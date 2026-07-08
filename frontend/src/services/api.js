@@ -141,6 +141,10 @@ export const aiAPI = {
     api.post('/ai/supplier/chat/', { message, request_id, conversation_id }),
   supplierSuggestions: (request_id) =>
     api.post('/ai/supplier/suggestions/', { request_id }),
+  agentChat: (message, conversation_id = null) =>
+    api.post('/ai/agent/', { message, conversation_id }),
+  agentConfirm: (tool, args, conversation_id) =>
+    api.post('/ai/agent/', { confirm_action: { tool, args }, conversation_id }),
 }
 
 // ── Suppliers / Buyers (Module 5) ─────────────────────────────────────────────

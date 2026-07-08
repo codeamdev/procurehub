@@ -20,6 +20,7 @@ export const NAV_ITEMS = [
   { id: 'buyers',       title: 'Compradores',   path: '/buyers',       icon: Users,           roles: ['admin'] },
   { id: 'workflows',    title: 'Workflows',     path: '/workflows',    icon: GitBranch,       roles: ['admin', 'buyer'] },
   { id: 'ai',           title: 'AI Assistant',  path: '/ai',           icon: Sparkles,        roles: ['admin', 'buyer'] },
+  { id: 'agent',        title: 'Agente IA',     path: '/agent',        icon: Bot,             roles: ['admin', 'buyer', 'supplier'] },
   { id: 'supplier-ai',  title: 'AI Advisor',    path: '/supplier-ai',  icon: Bot,             roles: ['supplier'] },
   { id: 'admin-panel',  title: 'Admin',         path: '/admin-panel',  icon: ShieldCheck,     roles: ['admin'] },
 ]

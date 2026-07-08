@@ -20,6 +20,7 @@ const SuppliersPage           = lazy(() => import('./pages/SuppliersPage'))
 const BuyersPage              = lazy(() => import('./pages/BuyersPage'))
 const NegotiationsPage        = lazy(() => import('./pages/NegotiationsPage'))
 const NegotiationDetailPage   = lazy(() => import('./pages/NegotiationDetailPage'))
+const AgentPage               = lazy(() => import('./pages/AgentPage'))
 
 function PageLoader() {
   return (
@@ -137,6 +138,12 @@ function AppRoutes() {
         <Route path="/negotiations/:id" element={
           <ProtectedRoute roles={['admin', 'buyer', 'supplier']}>
             <Layout><NegotiationDetailPage /></Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/agent" element={
+          <ProtectedRoute roles={['admin', 'buyer', 'supplier']}>
+            <Layout><AgentPage /></Layout>
           </ProtectedRoute>
         } />
 
