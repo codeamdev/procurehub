@@ -5,7 +5,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenRefreshView  # noqa: F401
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from .models import Category, SupplierProfile, BuyerProfile
 from .serializers import (
@@ -29,6 +31,29 @@ class RegisterRateThrottle(AnonRateThrottle):
     scope = 'register'
 
 
+# ── Cookie helpers ────────────────────────────────────────────────────────────
+
+_SECURE = not django_settings.DEBUG  # Secure flag en producción
+
+def _set_access_cookie(response, token: str) -> None:
+    response.set_cookie(
+        'access_token', token,
+        max_age=int(django_settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+        httponly=True, samesite='Lax', secure=_SECURE,
+    )
+
+def _set_refresh_cookie(response, token: str) -> None:
+    response.set_cookie(
+        'refresh_token', token,
+        max_age=int(django_settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
+        httponly=True, samesite='Lax', secure=_SECURE,
+    )
+
+def _clear_auth_cookies(response) -> None:
+    response.delete_cookie('access_token')
+    response.delete_cookie('refresh_token')
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
@@ -39,10 +64,13 @@ def register(request):
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
     tokens = services.issue_tokens(user)
-    return Response(
+    response = Response(
         {'user': UserSerializer(user).data, **tokens},
         status=status.HTTP_201_CREATED,
     )
+    _set_access_cookie(response, tokens['access'])
+    _set_refresh_cookie(response, tokens['refresh'])
+    return response
 
 
 @api_view(['POST'])
@@ -54,14 +82,45 @@ def login(request):
         email=request.data.get('email', ''),
         password=request.data.get('password', ''),
     )
-    return Response({'user': UserSerializer(user).data, **tokens})
+    response = Response({'user': UserSerializer(user).data, **tokens})
+    _set_access_cookie(response, tokens['access'])
+    _set_refresh_cookie(response, tokens['refresh'])
+    return response
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout(request):
-    services.blacklist_token(request.data.get('refresh', ''))
-    return Response({'message': 'Logged out successfully.'})
+    refresh = request.data.get('refresh') or request.COOKIES.get('refresh_token', '')
+    if refresh:
+        try:
+            services.blacklist_token(refresh)
+        except Exception:
+            pass  # best-effort: el token ya puede estar en la blacklist
+    response = Response({'message': 'Logged out successfully.'})
+    _clear_auth_cookies(response)
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def token_refresh_cookie(request):
+    """Renueva el access token leyendo el refresh desde la cookie httpOnly."""
+    refresh_token = request.COOKIES.get('refresh_token')
+    if not refresh_token:
+        return Response({'detail': 'No refresh token cookie.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    ser = TokenRefreshSerializer(data={'refresh': refresh_token}, context={'request': request})
+    if not ser.is_valid():
+        resp = Response({'detail': 'Refresh token inválido o expirado.'}, status=status.HTTP_401_UNAUTHORIZED)
+        _clear_auth_cookies(resp)
+        return resp
+
+    resp = Response({'access': ser.validated_data['access']})
+    _set_access_cookie(resp, ser.validated_data['access'])
+    if 'refresh' in ser.validated_data:
+        _set_refresh_cookie(resp, ser.validated_data['refresh'])
+    return resp
 
 
 @api_view(['GET'])

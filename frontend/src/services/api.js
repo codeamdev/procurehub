@@ -1,32 +1,26 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+// cookies httpOnly — el browser las envía automáticamente con withCredentials
+const api = axios.create({ baseURL: '/api', withCredentials: true })
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+// No se inyecta Authorization: el token viaja en la cookie 'access_token'
 
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
+    const url = original?.url ?? ''
+
+    // No reintentar si es la comprobación inicial de sesión o el propio refresh
+    const skipRetry = url.includes('/auth/me/') || url.includes('/auth/token/refresh-cookie/')
+
+    if (error.response?.status === 401 && !original._retry && !skipRetry) {
       original._retry = true
-      const refresh = localStorage.getItem('refresh_token')
-      if (refresh) {
-        try {
-          const { data } = await axios.post('/api/auth/token/refresh/', { refresh })
-          localStorage.setItem('access_token', data.access)
-          if (data.refresh) localStorage.setItem('refresh_token', data.refresh)
-          original.headers.Authorization = `Bearer ${data.access}`
-          return api(original)
-        } catch {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          window.location.href = '/login'
-        }
+      try {
+        await axios.post('/api/auth/token/refresh-cookie/', null, { withCredentials: true })
+        return api(original)
+      } catch {
+        window.location.href = '/login'
       }
     }
     return Promise.reject(error)
@@ -36,9 +30,9 @@ api.interceptors.response.use(
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
   register: (data) => api.post('/auth/register/', data),
-  login: (data) => api.post('/auth/login/', data),
-  logout: (refresh) => api.post('/auth/logout/', { refresh }),
-  me: () => api.get('/auth/me/'),
+  login:    (data) => api.post('/auth/login/', data),
+  logout:   ()     => api.post('/auth/logout/'),   // refresh en cookie httpOnly
+  me:       ()     => api.get('/auth/me/'),
 }
 
 // ── Supplier management (admin only) ─────────────────────────────────────────

@@ -14,6 +14,7 @@ urlpatterns = [
     path('logout/', views.logout, name='logout'),
     path('me/', views.me, name='me'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh-cookie/', views.token_refresh_cookie, name='token_refresh_cookie'),
     # Legacy supplier approval endpoints (kept for backward compatibility)
     path('suppliers/', include('apps.accounts.supplier_urls')),
     # New profile/management endpoints
