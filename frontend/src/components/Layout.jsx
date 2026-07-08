@@ -11,8 +11,23 @@ export default function Layout({ children }) {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => localStorage.getItem('sidebar_open') !== 'false'
+  )
   const [openTabs, setOpenTabs] = useState([])
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar_open', String(next))
+      return next
+    })
+  }, [])
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false)
+    localStorage.setItem('sidebar_open', 'false')
+  }, [])
 
   const visibleItems = useMemo(
     () => NAV_ITEMS.filter(item => !item.roles || item.roles.includes(user?.role)),
@@ -47,22 +62,22 @@ export default function Layout({ children }) {
   const handleTabClose = (id) => {
     const newTabs = openTabs.filter(t => t.id !== id)
     setOpenTabs(newTabs)
-
     if (activeTabId === id) {
-      if (newTabs.length > 0) {
-        navigate(newTabs[newTabs.length - 1].path)
-      } else {
-        navigate('/')
-      }
+      if (newTabs.length > 0) navigate(newTabs[newTabs.length - 1].path)
+      else navigate('/')
     }
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-['Inter',sans-serif] overflow-hidden text-slate-800 dark:text-slate-200 transition-colors">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+    <div className="h-screen bg-slate-50 dark:bg-slate-950 font-['Inter',sans-serif] overflow-hidden text-slate-800 dark:text-slate-200 transition-colors">
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
+      <Sidebar isOpen={isSidebarOpen} onClose={closeSidebar} />
+
+      {/* Content area shifts right when sidebar is open */}
+      <div className={`h-screen flex flex-col min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out ${
+        isSidebarOpen ? 'ml-64' : 'ml-0'
+      }`}>
+        <Topbar onMenuClick={toggleSidebar} />
 
         <TabBar
           openTabs={openTabs}

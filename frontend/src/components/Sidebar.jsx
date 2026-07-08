@@ -96,7 +96,8 @@ function AccordionSection({ icon: Icon, label, isOpen, onToggle, hasActiveChild,
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-export function Sidebar({ isOpen, setIsOpen }) {
+export function Sidebar({ isOpen, onClose }) {
+  const setIsOpen = onClose   // alias for internal use
   const navigate  = useNavigate()
   const location  = useLocation()
   const { user, logout } = useAuth()
@@ -122,7 +123,8 @@ export function Sidebar({ isOpen, setIsOpen }) {
 
   const handleNav = (path) => {
     navigate(path)
-    if (window.innerWidth < 1024) setIsOpen(false)
+    // On small screens close the sidebar after navigation
+    if (window.innerWidth < 1024) onClose()
   }
 
   const isExact   = (path) => location.pathname === path
@@ -144,17 +146,19 @@ export function Sidebar({ isOpen, setIsOpen }) {
 
   return (
     <>
+      {/* Backdrop: only on small screens */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-slate-800/50 z-20 lg:hidden"
-          onClick={() => setIsOpen(false)}
+          onClick={onClose}
         />
       )}
 
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-30 flex-shrink-0
-        w-64 bg-slate-900 text-slate-300 transition-transform duration-300 ease-in-out
-        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        fixed inset-y-0 left-0 z-30 flex-shrink-0
+        w-64 bg-slate-900 text-slate-300
+        transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         flex flex-col
       `}>
 
@@ -169,8 +173,9 @@ export function Sidebar({ isOpen, setIsOpen }) {
             </span>
           </div>
           <button
-            className="lg:hidden text-slate-400 hover:text-white transition-colors flex-shrink-0 ml-2"
-            onClick={() => setIsOpen(false)}
+            className="text-slate-400 hover:text-white transition-colors flex-shrink-0 ml-2"
+            onClick={onClose}
+            title="Ocultar sidebar"
           >
             <X size={20} />
           </button>

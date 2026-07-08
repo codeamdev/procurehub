@@ -206,15 +206,16 @@ function FieldInput({ field, value, onChange, disabled }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const FULL_WIDTH_TYPES = new Set(['textarea', 'multiselect', 'boolean'])
+
 export default function DynamicForm({ fields = [], values = {}, onChange, errors = {}, disabled = false }) {
   const handleChange = (key, value) => onChange({ ...values, [key]: value })
 
   if (fields.length === 0) return null
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-5">
       {fields.map(field => {
-        // Evaluate dynamic conditions against current values
         const cond = field.conditions ?? {}
         const isVisible  = cond.visible  ? evalCondition(cond.visible,  values) : true
         const isEditable = cond.editable ? evalCondition(cond.editable, values) : field.editable
@@ -223,10 +224,14 @@ export default function DynamicForm({ fields = [], values = {}, onChange, errors
         if (!isVisible) return null
 
         const fieldErrors = errors[field.key] ?? []
-        const isDisabled = disabled || !isEditable
+        const isDisabled  = disabled || !isEditable
+        const isFullWidth = FULL_WIDTH_TYPES.has(field.type)
 
         return (
-          <div key={field.key} className="flex flex-col gap-1.5">
+          <div
+            key={field.key}
+            className={`flex flex-col gap-1.5 ${isFullWidth ? 'col-span-2' : 'col-span-1'}`}
+          >
             {field.type !== 'boolean' && (
               <Label htmlFor={field.key} className="text-sm font-medium text-slate-700 dark:text-slate-200">
                 {field.label}
