@@ -6,7 +6,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdminOrBuyer, IsSupplier
+from apps.accounts.permissions import IsAdminOrBuyer, IsApprovedSupplier
 from .models import ProcurementRequest, Proposal
 from .serializers import ProcurementRequestSerializer, ProposalSerializer
 from . import services
@@ -66,7 +66,7 @@ class ProposalViewSet(
 
     def get_permissions(self):
         if self.action == 'create':
-            return [IsSupplier()]
+            return [IsApprovedSupplier()]
         return [IsAuthenticated()]
 
     def get_queryset(self):

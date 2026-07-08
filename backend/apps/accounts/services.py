@@ -60,10 +60,9 @@ def approve_supplier(approver, supplier_id: int):
 
 def reject_supplier(approver, supplier_id: int):
     supplier = _get_supplier(supplier_id)
-    if not supplier.is_approved:
-        raise ConflictError('Supplier is already rejected/pending.')
     supplier.is_approved = False
-    supplier.save(update_fields=['is_approved'])
+    supplier.is_active = False
+    supplier.save(update_fields=['is_approved', 'is_active'])
     logger.info('Supplier %d rejected by user %d', supplier.pk, approver.pk)
     return supplier
 
